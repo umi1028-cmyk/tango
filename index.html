@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ブロスターゲット1900 Ver.6.0</title>
+  <style>
+    :root {
+      --primary-blue: #0072ff;
+      --accent-yellow: #ffeb3b;
+      --wrong-red: #f44336;
+      --correct-green: #4CAF50;
+    }
+    body {
+      font-family: 'Hiragino Kaku Gothic ProN', sans-serif;
+      text-align: center;
+      background: linear-gradient(135deg, #00c6ff, #0072ff);
+      color: white; margin: 0; padding: 20px; overflow-x: hidden;
+    }
+    h1 { 
+      color: var(--accent-yellow); font-size: 2.2em; 
+      text-shadow: 2px 2px 0 #333, -1px -1px 0 #333, 1px -1px 0 #333, -1px 1px 0 #333, 1px 1px 0 #333;
+      margin-bottom: 10px;
+    }
+    .panel {
+      background: rgba(0, 0, 0, 0.3); border: 4px solid #fff;
+      border-radius: 20px; max-width: 420px; margin: 0 auto;
+      padding: 20px; box-shadow: 0 10px 20px rgba(0,0,0,0.4);
+      backdrop-filter: blur(10px);
+    }
+    .timer-container {
+      width: 100%; height: 14px; background: #222;
+      border-radius: 10px; margin: 15px 0; border: 2px solid #fff; overflow: hidden;
+    }
+    #timer-bar {
+      width: 100%; height: 100%;
+      background: linear-gradient(to right, #4facfe, #00f2fe);
+      transition: width 0.1s linear;
+    }
+    select, button {
+      font-size: 18px; padding: 15px; margin: 10px 0;
+      border-radius: 12px; border: 3px solid #333;
+      width: 100%; cursor: pointer; font-weight: bold;
+      box-shadow: 0 5px 0 #333; transition: 0.1s;
+    }
+    button:active { transform: translateY(4px); box-shadow: 0 1px 0 #333; }
+    .btn-start { background: #ffc107; color: #333; }
+    .btn-option { background: white; color: #333; font-size: 16px; }
+    
+    #game-area, #result-area { display: none; }
+    .word-display { font-size: 3em; font-weight: 900; margin: 15px 0; text-shadow: 3px 3px 0 #000; }
+    .status-bar { display: flex; justify-content: space-between; font-size: 1.2em; color: var(--accent-yellow); font-weight: bold; }
+    
+    #wrong-list-display {
+      text-align: left; background: rgba(0,0,0,0.5);
+      padding: 15px; border-radius: 10px; margin-top: 15px;
+      max-height: 180px; overflow-y: auto; font-size: 0.9em;
+    }
+    .flash-overlay {
+      position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+      pointer-events: none; z-index: 999;
+    }
+    @keyframes flashCorrect { 0% { background: rgba(76,175,80,0.6); } 100% { background: transparent; } }
+    @keyframes flashWrong { 0% { background: rgba(244,67,54,0.6); } 100% { background: transparent; } }
+    
+    #tap-to-start {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.9);
+      display: flex; align-items: center; justify-content: center;
+      z-index: 1000; color: var(--accent-yellow); font-size: 1.5em; cursor: pointer;
+    }
+    .blink { animation: blinker 1.5s linear infinite; }
+    @keyframes blinker { 50% { opacity: 0; } }
+  </style>
+</head>
+<body>
+
+  <!-- 音声設定 -->
+  <audio id="intro" src="ScreenRecording_05-03-2026 18-40-25_1.mov"></audio>
+  <audio id="menu-bgm" loop src="ScreenRecording_05-03-2026 18-50-06_1.mov"></audio>
+  <audio id="brawl-start" src="ScreenRecording_05-03-2026 18-55-03_1.mov"></audio>
+  <audio id="battle-bgm" loop src="gemini_generated_video_198B0383.mp4"></audio>
+
+  <div id="tap-to-start"><div class="blink">タップしてBATTLE開始！</div></div>
+
+  <h1>ブロスターゲット1900</h1>
+
+  <div class="panel" id="setup-area">
+    <p>セクションを選択してください</p>
+    <select id="section-select"></select>
+    <button class="btn-start" onclick="startGame()">▶ プレイ開始</button>
+  </div>
+
+  <div class="panel" id="game-area">
+    <div class="status-bar">
+      <span id="question-count">Q. 1 / 10</span>
+      <span id="combo-display">🔥 0 COMBO</span>
+    </div>
+    <div class="timer-container"><div id="timer-bar"></div></div>
+    <div class="word-display" id="en-word">...</div>
+    <div id="options-area"></div>
+  </div>
+
+  <div class="panel" id="result-area">
+    <h2 id="rank-text">RANK: ---</h2>
+    <div class="word-display" id="final-score">0 / 10</div>
+    <div id="wrong-list-display"></div>
+    <button class="btn-start" onclick="location.reload()">もう一度挑む</button>
+  </div>
+
+  <div id="flash" class="flash-overlay"></div>
+
+  <script>
+    // --- 600語データ完全版 ---
+    const vocabData = [
+      // Section 1-3 (1-300語)
+      {section:1, en:"create", ja:"を創り出す"},{section:1, en:"increase", ja:"増加する；増やす"},{section:1, en:"improve", ja:"向上させる；よくなる"},{section:1, en:"mean", ja:"意味する；つもりである"},{section:1, en:"own", ja:"所有している；認める"},{section:1, en:"include", ja:"を含む"},{section:1, en:"consider", ja:"見なす；について考える"},{section:1, en:"allow", ja:"許す；を与える"},{section:1, en:"suggest", ja:"提案する；暗示する"},{section:1, en:"produce", ja:"生産する；取り出す"},{section:1, en:"decide", ja:"決める；決着をつける"},{section:1, en:"offer", ja:"提供する，申し出る"},{section:1, en:"require", ja:"要求する；必要とする"},{section:1, en:"share", ja:"共有する；分担する"},{section:1, en:"store", ja:"保存する；蓄える"},{section:1, en:"tend", ja:"傾向がある；世話する"},{section:1, en:"concern", ja:"心配している；関係する"},{section:1, en:"describe", ja:"について述べる"},{section:1, en:"involve", ja:"関与させる；伴う"},{section:1, en:"reduce", ja:"減らす；変える"},{section:1, en:"design", ja:"設計する；計画する"},{section:1, en:"force", ja:"強いる；強要する"},{section:1, en:"limit", ja:"制限する"},{section:1, en:"bear", ja:"耐える；産む"},{section:1, en:"affect", ja:"影響を及ぼす"},{section:1, en:"deal", ja:"処理する；商う"},{section:1, en:"avoid", ja:"避ける"},{section:1, en:"relate", ja:"関連づける"},{section:1, en:"realize", ja:"気づく；実現する"},{section:1, en:"encourage", ja:"奨励する；励ます"},{section:1, en:"compare", ja:"比較する"},{section:1, en:"measure", ja:"測る；評価する"},{section:1, en:"exist", ja: "存在する"},{section:1, en:"mark", ja:"印をつける；示す"},{section:1, en:"challenge", ja:"異議を唱える；挑む"},{section:1, en:"depend", ja:"頼る；～次第である"},{section:1, en:"object", ja:"反対する"},{section:1, en:"demand", ja:"要求する"},{section:1, en:"found", ja:"設立する；築く"},{section:1, en:"complete", ja:"完成させる"},{section:1, en:"idea", ja:"考え；概念"},{section:1, en:"accord", ja:"一致；合意"},{section:1, en:"company", ja:"会社；仲間"},{section:1, en:"interest", ja:"興味；利子"},{section:1, en:"research", ja:"研究，調査"},{section:1, en:"cause", ja:"原因；理由"},{section:1, en:"reason", ja:"理由；理性"},{section:1, en:"effect", ja:"影響，効果"},{section:1, en:"influence", ja:"影響（力）"},{section:1, en:"situation", ja:"状況；立場"},{section:1, en:"environment", ja:"環境"},{section:1, en:"skill", ja:"技能；熟練"},{section:1, en:"matter", ja:"事柄；問題；物質"},{section:1, en:"view", ja:"見解；見方；眺め"},{section:1, en:"value", ja:"価値；価格"},{section:1, en:"species", ja:"（生物の）種"},{section:1, en:"thought", ja:"考え；思考"},{section:1, en:"knowledge", ja:"知識"},{section:1, en:"memory", ja:"記憶（力）；思い出"},{section:1, en:"practice", ja:"実践；慣習；練習"},{section:1, en:"benefit", ja:"利益，恩恵"},{section:1, en:"theory", ja:"学説；理論"},{section:1, en:"issue", ja:"問題（点）；発行"},{section:1, en:"experiment", ja:"（～対象の）実験"},{section:1, en:"article", ja:"記事；条項"},{section:1, en:"focus", ja:"焦点；関心の的"},{section:1, en:"subject", ja:"話題；科目"},{section:1, en:"project", ja:"計画；事業"},{section:1, en:"quality", ja:"質；特質"},{section:1, en:"role", ja:"役割；役"},{section:1, en:"term", ja:"用語；条件；学期"},{section:1, en:"statement", ja:"声明；主張"},{section:1, en:"material", ja:"材料，素材"},{section:1, en:"evidence", ja:"証拠"},{section:1, en:"source", ja:"源，情報源"},{section:1, en:"community", ja:"共同社会"},{section:1, en:"technology", ja:"科学技術"},{section:1, en:"culture", ja:"文化；教養"},{section:1, en:"appropriate", ja:"適切な"},{section:1, en:"likely", ja:"ありそうな"},{section:1, en:"possible", ja:"可能な"},{section:1, en:"individual", ja:"個々の；個人の"},{section:1, en:"public", ja:"公の；公開の"},{section:1, en:"common", ja:"共通の；普通の"},{section:1, en:"certain", ja:"確信して；ある"},{section:1, en:"similar", ja:"似ている"},{section:1, en:"recent", ja:"最近の"},{section:1, en:"major", ja:"主要な"},{section:1, en:"patient", ja:"忍耐強い；勤勉な"},{section:1, en:"particular", ja:"特定の；特別の"},{section:1, en:"physical", ja:"身体の；物質的な"},{section:1, en:"various", ja:"さまざまな"},{section:1, en:"available", ja:"手に入る"},{section:1, en:"native", ja:"出生地の；原産の"},{section:1, en:"political", ja:"政治（上）の"},{section:1, en:"due", ja:"予定された；期日で"},{section:1, en:"blank", ja:"空白の"},{section:1, en:"ancient", ja:"古代の；昔からの"},{section:1, en:"correct", ja:"正しい；適切な"},{section:1, en:"despite", ja:"～にもかかわらず"},
+      {section:2, en:"notice", ja:"に気づく"},{section:2, en:"refer", ja:"言及する；参照する"},{section:2, en:"approach", ja:"に近づく"},{section:2, en:"wonder", ja:"かなと思う；驚く"},{section:2, en:"imagine", ja:"想像する；推測する"},{section:2, en:"recognize", ja:"識別できる；認める"},{section:2, en:"solve", ja:"を解く；解決する"},{section:2, en:"occur", ja:"起こる；心に浮かぶ"},{section:2, en:"argue", ja:"と主張する；議論する"},{section:2, en:"claim", ja:"と主張する；要求する"},{section:2, en:"express", ja:"を表す，述べる"},{section:2, en:"draw", ja:"引き出す；描く"},{section:2, en:"waste", ja:"を浪費する"},{section:2, en:"advance", ja:"進歩させる；進む"},{section:2, en:"spread", ja:"を広める；広がる"},{section:2, en:"prepare", ja:"準備する；調理する"},{section:2, en:"gain", ja:"を獲得する；増す"},{section:2, en:"achieve", ja:"達成する；成し遂げる"},{section:2, en:"establish", ja:"確立する；設立する"},{section:2, en:"supply", ja:"を供給する"},{section:2, en:"suppose", ja:"と思う；仮定する"},{section:2, en:"perform", ja:"行う；演じる"},{section:2, en:"prefer", ja:"のほうを好む"},{section:2, en:"determine", ja:"を決定する"},{section:2, en:"treat", ja:"扱う；治療する"},{section:2, en:"prove", ja:"証明する；判明する"},{section:2, en:"apply", ja:"適用する；申し込む"},{section:2, en:"mention", ja:"言及する；と言う"},{section:2, en:"communicate", ja:"情報交換をする"},{section:2, en:"contain", ja:"を含む；収容する"},{section:2, en:"contact", ja:"連絡を取る；接触する"},{section:2, en:"regard", ja:"見なす；評価する"},{section:2, en:"respect", ja:"尊敬する；尊重する"},{section:2, en:"search", ja:"捜す；詳しく調べる"},{section:2, en:"connect", ja:"つなぐ；関連づける"},{section:2, en:"decline", ja:"減少する；断る"},{section:2, en:"prevent", ja:"妨げる；防ぐ"},{section:2, en:"suffer", ja:"苦しむ；経験する"},{section:2, en:"survive", ja:"生き残る"},{section:2, en:"publish", ja:"出版する；公表する"},{section:2, en:"opportunity", ja:"機会"},{section:2, en:"task", ja:"仕事，作業；課題"},{section:2, en:"industry", ja:"産業；勤勉"},{section:2, en:"medium", ja:"媒体；手段"},{section:2, en:"economy", ja:"経済；節約"},{section:2, en:"policy", ja:"政策，方針；主義"},{section:2, en:"account", ja:"説明；勘定；口座"},{section:2, en:"trade", ja:"貿易；取引"},{section:2, en:"model", ja:"模範；モデル"},{section:2, en:"figure", ja:"数字；姿；人物"},{section:2, en:"cell", ja:"細胞；独房；電池"},{section:2, en:"image", ja:"印象；画像；像"},{section:2, en:"emotion", ja:"感情；感動"},{section:2, en:"stress", ja:"ストレス；圧力"},{section:2, en:"decade", ja:"10年間"},{section:2, en:"range", ja:"範囲；射程距離"},{section:2, en:"character", ja:"性格；特徴；文字"},{section:2, en:"advantage", ja:"利点；優勢"},{section:2, en:"phrase", ja:"句；成句"},{section:2, en:"damage", ja:"損害，損傷"},{section:2, en:"impact", ja:"影響；衝突；衝撃"},{section:2, en:"method", ja:"方法；体系"},{section:2, en:"resource", ja:"資源；資金"},{section:2, en:"region", ja:"地域；領域"},{section:2, en:"medicine", ja:"薬；医学"},{section:2, en:"detail", ja:"詳細；細部"},{section:2, en:"feature", ja:"特徴；顔つき"},{section:2, en:"function", ja:"機能；関数"},{section:2, en:"access", ja:"利用；接近"},{section:2, en:"item", ja:"品目，項目"},{section:2, en:"income", ja:"収入；所得"},{section:2, en:"attitude", ja:"態度；心構え"},{section:2, en:"site", ja:"場所；サイト"},{section:2, en:"aspect", ja: "側面；観点"},{section:2, en:"structure", ja:"構造；構造物"},{section:2, en:"habit", ja:"習慣，癖"},{section:2, en:"link", ja:"関連；リンク"},{section:2, en:"instance", ja:"例，実例"},{section:2, en:"positive", ja:"肯定的な；陽性の"},{section:2, en:"negative", ja:"否定的な；陰性の"},{section:2, en:"complex", ja:"複雑な；複合体"},{section:2, en:"current", ja:"現在の；現代の"},{section:2, en:"mental", ja:"精神の；知能の"},{section:2, en:"specific", ja:"特定の；具体的な"},{section:2, en:"significant", ja:"重要な；意義深い"},{section:2, en:"essential", ja:"必要不可欠な"},{section:2, en:"official", ja:"公用の；公式の"},{section:2, en:"financial", ja:"財政上の；財界の"},{section:2, en:"academic", ja:"学問の；大学の"},{section:2, en:"aware", ja:"気づいて，知って"},{section:2, en:"worth", ja:"に値する；価値がある"},{section:2, en:"potential", ja:"潜在的な"},{section:2, en:"active", ja:"積極的な；活動的な"},{section:2, en:"digital", ja:"デジタル方式の"},{section:2, en:"mobile", ja:"可動式の；流動性"},{section:2, en:"novel", ja:"斬新な"},{section:2, en:"plastic", ja:"柔軟な；ビニール"},{section:2, en:"chemical", ja:"化学の，化学的な"},{section:2, en:"necessary", ja:"必要な"},{section:2, en:"eventually", ja:"結局（は）"},
+      {section:3, en:"identify", ja:"特定する；同一視する"},{section:3, en:"represent", ja:"表す；代表する"},{section:3, en:"indicate", ja:"指し示す；述べる"},{section:3, en:"manage", ja:"なんとかやり遂げる"},{section:3, en:"attend", ja:"出席する；世話する"},{section:3, en:"maintain", ja:"維持する；主張する"},{section:3, en:"survey", ja:"調査する；概観する"},{section:3, en:"replace", ja:"に代わる；取り替える"},{section:3, en:"sort", ja:"分類する"},{section:3, en:"conduct", ja:"実施する；導く"},{section:3, en:"associate", ja:"結び付けて考える"},{section:3, en:"attempt", ja:"試みる，企てる"},{section:3, en:"promote", ja:"促進する；昇進する"},{section:3, en:"earn", ja:"稼ぐ；得る"},{section:3, en:"unite", ja:"団結させる；結合する"},{section:3, en:"feed", ja:"食べ物を与える"},{section:3, en:"seek", ja:"追い求める；要請する"},{section:3, en:"observe", ja:"気づく；観察する"},{section:3, en:"reveal", ja:"明らかにする；見せる"},{section:3, en:"estimate", ja:"推定する；見積もる"},{section:3, en:"reflect", ja:"反映する；反射する"},{section:3, en:"attract", ja:"引きつける"},{section:3, en:"decrease", ja:"減少する；減らす"},{section:3, en:"ignore", ja:"無視する"},{section:3, en:"match", ja:"（と）合う；匹敵する"},{section:3, en:"define", ja:"定義する；明確にする"},{section:3, en:"adapt", ja:"適応する；適合させる"},{section:3, en:"contribute", ja:"貢献する；寄付する"},{section:3, en:"exchange", ja:"交換する；両替する"},{section:3, en:"display", ja:"示す；展示する"},{section:3, en:"respond", ja:"反応する；答える"},{section:3, en:"hide", ja:"隠す；隠れる"},{section:3, en:"doubt", ja:"ではないと思う；疑う"},{section:3, en:"remove", ja:"取り除く；解雇する"},{section:3, en:"wind", ja:"巻く；曲がりくねる"},{section:3, en:"assume", ja:"当然と思う；仮定する"},{section:3, en:"relax", ja:"くつろぐ；緩む"},{section:3, en:"satisfy", ja:"満足させる；満たす"},{section:3, en:"desire", ja:"強く望む"},{section:3, en:"succeed", ja:"成功する；継承する"},{section:3, en:"concept", ja:"概念；考え"},{section:3, en:"fashion", ja:"流行；方法"},{section:3, en:"device", ja:"装置，機器"},{section:3, en:"charge", ja:"料金；管理"},{section:3, en:"contrast", ja:"対照"},{section:3, en:"colleague", ja:"同僚"},{section:3, en:"pain", ja:"苦痛；苦悩"},{section:3, en:"bill", ja:"請求書；法案"},{section:3, en:"content", ja:"内容；コンテンツ"},{section:3, en:"section", ja:"部門；部分；地区"},{section:3, en:"audience", ja:"聴衆，観客"},{section:3, en:"surface", ja:"表面；外見"},{section:3, en:"crop", ja:"作物；収穫高"},{section:3, en:"topic", ja:"話題；主題"},{section:3, en:"technique", ja:"技術；手法"},{section:3, en:"status", ja:"地位；状態"},{section:3, en:"option", ja:"選択；選択肢"},{section:3, en:"reward", ja:"報酬；報い"},{section:3, en:"race", ja:"人種；民族；競争"},{section:3, en:"crime", ja:"罪，犯罪"},{section:3, en:"conflict", ja:"争い；不一致"},{section:3, en:"struggle", ja:"闘い；懸命の努力"},{section:3, en:"context", ja:"状況；文脈"},{section:3, en:"debate", ja:"討論，論争"},{section:3, en:"fuel", ja:"燃料；勢い"},{section:3, en:"pollution", ja:"汚染，公害"},{section:3, en:"trend", ja:"傾向；流行"},{section:3, en:"balance", ja:"均衡；残高"},{section:3, en:"traffic", ja:"交通；輸送量"},{section:3, en:"strategy", ja:"戦略"},{section:3, en:"basis", ja:"基礎；根拠"},{section:3, en:"consequence", ja:"結果；重大性"},{section:3, en:"aim", ja:"目的；狙い"},{section:3, en:"ancestor", ja:"祖先；原型"},{section:3, en:"gene", ja:"遺伝子"},{section:3, en:"track", ja:"跡；軌道；走路"},{section:3, en:"revolution", ja:"革命；回転"},{section:3, en:"progress", ja:"進歩；前進"},{section:3, en:"cognitive", ja:"認知の"},{section:3, en:"ideal", ja:"理想的な；観念的な"},{section:3, en:"efficient", ja:"効率的な；有能な"},{section:3, en:"universal", ja:"普遍的な"},{section:3, en:"vast", ja:"莫大な；広大な"},{section:3, en:"extra", ja:"追加の，余分の"},{section:3, en:"entire", ja:"全体の；完全な"},{section:3, en:"familiar", ja:"精通している"},{section:3, en:"obvious", ja:"明らかな"},{section:3, en:"moral", ja:"道徳上の；倫理的な"},{section:3, en:"ordinary", ja:"一般の，普通の"},{section:3, en:"equal", ja:"等しい；匹敵する"},{section:3, en:"previous", ja:"以前の，前の"},{section:3, en:"false", ja:"間違った；虚偽の"},{section:3, en:"rare", ja:"まれな，珍しい"},{section:3, en:"legal", ja:"法律の；合法の"},{section:3, en:"independent", ja:"独立した"},{section:3, en:"extreme", ja:"極端な；極度の"},{section:3, en:"actual", ja:"実際の；現実の"},{section:3, en:"willing", ja:"いとわない"},{section:3, en:"urban", ja:"都市の"},{section:3, en:"whereas", ja:"対し，一方"},
+
+      // Section 4 (301-400語)
+      {section:4, en:"predict", ja:"予言する，予測する"},{section:4, en:"examine", ja:"調べる；診察する"},{section:4, en:"trust", ja:"信頼する"},{section:4, en:"stick", ja:"刺す；くっつく"},{section:4, en:"emerge", ja:"現れる；明らかになる"},{section:4, en:"vary", ja:"さまざまである"},{section:4, en:"release", ja:"放出する；解放する"},{section:4, en:"divide", ja:"分ける；分かれる"},{section:4, en:"enable", ja:"可能にする"},{section:4, en:"judge", ja:"判断する；判決を下す"},{section:4, en:"rely", ja:"頼る"},{section:4, en:"engage", ja:"従事させる；雇う"},{section:4, en:"shift", ja:"変える；移動する"},{section:4, en:"adopt", ja:"採用する；養子にする"},{section:4, en:"acquire", ja:"得る；習得する"},{section:4, en:"expand", ja:"拡大する"},{section:4, en:"refuse", ja:"拒む；断る"},{section:4, en:"strike", ja:"心を打つ；襲う"},{section:4, en:"repeat", ja:"繰り返す；復唱する"},{section:4, en:"consume", ja:"消費する；食べる"},{section:4, en:"confuse", ja:"混同する；当惑させる"},{section:4, en:"select", ja:"選ぶ，えり抜く"},{section:4, en:"evolve", ja:"発展する；進化する"},{section:4, en:"convince", ja:"納得させる"},{section:4, en:"recall", ja:"思い出す；呼び戻す"},{section:4, en:"destroy", ja:"破壊する；破滅させる"},{section:4, en:"preserve", ja:"保存する；保持する"},{section:4, en:"organize", ja:"準備する；組織する"},{section:4, en:"warn", ja:"警告する"},{section:4, en:"address", ja:"対処する；演説する"},{section:4, en:"operate", ja:"操作する；機能する"},{section:4, en:"participate", ja:"参加する"},{section:4, en:"surround", ja:"取り巻く"},{section:4, en:"flow", ja:"流れる；生じる"},{section:4, en:"bore", ja:"退屈させる"},{section:4, en:"complain", ja:"不平を言う"},{section:4, en:"host", ja:"主催する"},{section:4, en:"combine", ja:"結び付ける"},{section:4, en:"extend", ja:"伸ばす；及ぶ"},{section:4, en:"appreciate", ja:"正当に評価する；感謝する"},{section:4, en:"target", ja:"目標；的"},{section:4, en:"element", ja:"要素；元素"},{section:4, en:"principle", ja:"原則；主義"},{section:4, en:"phenomenon", ja:"現象"},{section:4, en:"atmosphere", ja:"大気；雰囲気"},{section:4, en:"origin", ja:"起源；源"},{section:4, en:"personality", ja:"個性，性格"},{section:4, en:"capacity", ja:"容量；能力"},{section:4, en:"profit", ja:"利益；収益"},{section:4, en:"circumstance", ja:"状況；境遇"},{section:4, en:"manner", ja:"方法；作法"},{section:4, en:"threat", ja:"脅威；兆し"},{section:4, en:"resident", ja:"居住者"},{section:4, en:"wealth", ja:"富；資源"},{section:4, en:"institution", ja:"機関；制度"},{section:4, en:"authority", ja:"当局；権威"},{section:4, en:"vote", ja:"投票；選挙権"},{section:4, en:"sight", ja:"光景；視野；視力"},{section:4, en:"campaign", ja:"運動；軍事行動"},{section:4, en:"fund", ja:"基金，資金"},{section:4, en:"web", ja:"ウェブ；クモの巣"},{section:4, en:"symbol", ja:"象徴；記号"},{section:4, en:"analysis", ja:"分析"},{section:4, en:"version", ja:"版；解釈"},{section:4, en:"perspective", ja:"観点；遠近法"},{section:4, en:"crisis", ja:"危機"},{section:4, en:"disaster", ja:"災害；惨事"},{section:4, en:"lecture", ja:"講義；説教"},{section:4, en:"psychology", ja:"心理学"},{section:4, en:"gender", ja:"性，性別"},{section:4, en:"custom", ja:"慣習；税関"},{section:4, en:"court", ja:"裁判所；宮廷"},{section:4, en:"desert", ja:"砂漠"},{section:4, en:"soil", ja:"土地，土壌"},{section:4, en:"agriculture", ja:"農業；農学"},{section:4, en:"fossil", ja:"化石"},{section:4, en:"document", ja:"文書；記録"},{section:4, en:"vocabulary", ja:"語彙"},{section:4, en:"intelligent", ja:"聡明な"},{section:4, en:"conscious", ja:"意識して"},{section:4, en:"capable", ja:"能力がある"},{section:4, en:"accurate", ja:"正確な"},{section:4, en:"fundamental", ja:"基本的な"},{section:4, en:"artificial", ja:"人工の；不自然な"},{section:4, en:"firm", ja:"確固たる；堅固な"},{section:4, en:"overall", ja:"総合的な"},{section:4, en:"rural", ja:"田舎の"},{section:4, en:"military", ja:"軍の，軍事の"},{section:4, en:"nuclear", ja:"核の，原子力の"},{section:4, en:"biological", ja:"生物学上の"},{section:4, en:"constant", ja:"絶え間ない；一定の"},{section:4, en:"severe", ja:"厳しい；猛烈な"},{section:4, en:"visual", ja:"視覚の；目に見える"},{section:4, en:"enormous", ja:"莫大な，巨大な"},{section:4, en:"convenient", ja:"便利な"},{section:4, en:"domestic", ja:"家庭の；国内の"},{section:4, en:"mass", ja:"大規模な；大衆"},{section:4, en:"typical", ja:"典型的な"},{section:4, en:"overseas", ja:"海外へ"},{section:4, en:"nevertheless", ja:"それにもかかわらず"},
+
+      // Section 5 (401-500語)
+      {section:5, en:"demonstrate", ja:"論証する；デモをする"},{section:5, en:"behave", ja:"振る舞う；作動する"},{section:5, en:"educate", ja:"教育する；養う"},{section:5, en:"purchase", ja:"購入する"},{section:5, en:"recommend", ja:"勧める"},{section:5, en:"admit", ja:"認める"},{section:5, en:"generate", ja:"生み出す；発生させる"},{section:5, en:"explore", ja:"調査する；探検する"},{section:5, en:"amaze", ja:"びっくりさせる"},{section:5, en:"tear", ja:"引き裂く；裂ける"},{section:5, en:"settle", ja:"解決する；移り住む"},{section:5, en:"afford", ja:"余裕がある"},{section:5, en:"conclude", ja:"結論づける；締結する"},{section:5, en:"advertise", ja:"宣伝する"},{section:5, en:"encounter", ja:"遭遇する"},{section:5, en:"remind", ja:"思い出させる"},{section:5, en:"locate", ja:"位置する"},{section:5, en:"aid", ja:"援助する，助ける"},{section:5, en:"bite", ja:"かむ；刺す"},{section:5, en:"deliver", ja:"配達する；演説する"},{section:5, en:"perceive", ja:"気づく；理解する"},{section:5, en:"distinguish", ja:"区別する"},{section:5, en:"imply", ja:"暗に意味する"},{section:5, en:"handle", ja:"処理する"},{section:5, en:"praise", ja:"賞賛する"},{section:5, en:"appeal", ja:"訴える；抗議する"},{section:5, en:"insist", ja:"強く主張する"},{section:5, en:"compete", ja:"競う；匹敵する"},{section:5, en:"rank", ja:"位置づける；評価する"},{section:5, en:"deny", ja:"否定する；拒む"},{section:5, en:"reject", ja:"拒否する"},{section:5, en:"intend", ja:"意図する"},{section:5, en:"expose", ja:"さらす；暴露する"},{section:5, en:"favor", ja:"賛成する；好む"},{section:5, en:"inspire", ja:"奮起させる"},{section:5, en:"propose", ja:"提案する"},{section:5, en:"spell", ja:"つづる"},{section:5, en:"breathe", ja:"呼吸する；吸う"},{section:5, en:"repair", ja:"修理する"},{section:5, en:"consist", ja:"から成る"},{section:5, en:"comment", ja:"意見，コメント"},{section:5, en:"instruction", ja:"指示；使用書"},{section:5, en:"religion", ja:"宗教；信条"},{section:5, en:"neighborhood", ja:"地域；近所"},{section:5, en:"laboratory", ja:"実験室，研究室"},{section:5, en:"presence", ja:"存在；出席"},{section:5, en:"confidence", ja:"自信；信頼"},{section:5, en:"harm", ja:"害，損害"},{section:5, en:"instrument", ja:"器具；楽器"},{section:5, en:"category", ja:"部類；区分"},{section:5, en:"capital", ja:"資本；首都；大文字"},{section:5, en:"outcome", ja:"結果；成果"},{section:5, en:"notion", ja:"概念；見解"},{section:5, en:"review", ja:"論評；再調査；復習"},{section:5, en:"trait", ja:"特性"},{section:5, en:"diversity", ja:"多様性"},{section:5, en:"victim", ja:"犠牲者"},{section:5, en:"occasion", ja:"場合；行事"},{section:5, en:"facility", ja:"施設；機能"},{section:5, en:"stock", ja:"在庫品；株"},{section:5, en:"conference", ja:"会議；協議"},{section:5, en:"humanity", ja:"人類；人間性"},{section:5, en:"dialect", ja:"方言"},{section:5, en:"proportion", ja:"割合；釣り合い"},{section:5, en:"tip", ja:"助言，秘訣；先端"},{section:5, en:"lawyer", ja:"弁護士"},{section:5, en:"stuff", ja:"物；素材"},{section:5, en:"comfort", ja:"快適さ；慰め"},{section:5, en:"philosophy", ja:"哲学；人生観"},{section:5, en:"mammal", ja:"哺乳動物"},{section:5, en:"quantity", ja:"量"},{section:5, en:"landscape", ja:"風景；状況"},{section:5, en:"tribe", ja:"部族；仲間"},{section:5, en:"organ", ja:"器官，臓器；組織"},{section:5, en:"trial", ja:"試み；試験；裁判"},{section:5, en:"norm", ja:"規範；標準"},{section:5, en:"code", ja:"規範；暗号"},{section:5, en:"substance", ja:"物質；実体"},{section:5, en:"multiple", ja:"多様な；種々雑多な"},{section:5, en:"numerous", ja:"非常に数の多い"},{section:5, en:"narrow", ja:"狭い；細い"},{section:5, en:"widespread", ja:"広範囲にわたる"},{section:5, en:"sufficient", ja:"十分な"},{section:5, en:"proper", ja:"適切な；正式の"},{section:5, en:"linguistic", ja:"言語の，言語学の"},{section:5, en:"annual", ja:"年1回の；例年の"},{section:5, en:"contemporary", ja:"現代の；同時代の"},{section:5, en:"contrary", ja:"反対の"},{section:5, en:"strict", ja:"厳しい；厳格な"},{section:5, en:"civil", ja:"市民の；民間の"},{section:5, en:"odd", ja:"奇妙な；奇数の"},{section:5, en:"unknown", ja:"不明の；知られていない"},{section:5, en:"superior", ja:"よりすぐれた"},{section:5, en:"sensitive", ja:"敏感な；神経質な"},{section:5, en:"violent", ja:"激しい；暴力的な"},{section:5, en:"virtual", ja:"仮想の；事実上の"},{section:5, en:"regardless", ja:"かまわない"},{section:5, en:"immediate", ja:"即座の；すぐそば"},{section:5, en:"crucial", ja:"重要な"},{section:5, en:"somewhat", ja:"いくぶん，多少"},
+
+      // Section 6 (501-600語)
+      {section:6, en:"interpret", ja:"を解釈する；通訳する"},{section:6, en:"translate", ja:"を翻訳する；変える"},{section:6, en:"concentrate", ja:"集中する"},{section:6, en:"request", ja:"頼む；要請する"},{section:6, en:"criticize", ja:"批判する"},{section:6, en:"overcome", ja:"克服する"},{section:6, en:"obtain", ja:"得る"},{section:6, en:"inform", ja:"知らせる"},{section:6, en:"ensure", ja:"確実にする；守る"},{section:6, en:"announce", ja:"発表する；告げる"},{section:6, en:"grant", ja:"与える；認める"},{section:6, en:"freeze", ja:"凍る；凍結する"},{section:6, en:"oppose", ja:"反対する；対抗させる"},{section:6, en:"differ", ja:"異なる"},{section:6, en:"hate", ja:"ひどく嫌う"},{section:6, en:"emphasize", ja:"強調する；重視する"},{section:6, en:"employ", ja:"雇う；使う"},{section:6, en:"credit", ja:"帰する；信じる"},{section:6, en:"transform", ja:"変える；変わる"},{section:6, en:"construct", ja:"建設する；構成する"},{section:6, en:"arise", ja:"生じる"},{section:6, en:"beat", ja:"打ち負かす；打つ"},{section:6, en:"regret", ja:"後悔する"},{section:6, en:"alter", ja:"変える；変わる"},{section:6, en:"absorb", ja:"吸収する；夢中にさせる"},{section:6, en:"disappoint", ja:"失望させる"},{section:6, en:"cure", ja:"治す；取り除く"},{section:6, en:"transport", ja:"輸送する；運ぶ"},{section:6, en:"rush", ja:"急いで行く；せき立てる"},{section:6, en:"hang", ja:"掛ける；絞首刑にする"},{section:6, en:"blame", ja:"責める；責任を負わせる"},{section:6, en:"ban", ja:"禁止する；締め出す"},{section:6, en:"fascinate", ja:"魅了する"},{section:6, en:"recover", ja:"回復する；取り戻す"},{section:6, en:"celebrate", ja:"祝う"},{section:6, en:"manufacture", ja:"製造する"},{section:6, en:"interact", ja:"影響し合う"},{section:6, en:"arrange", ja:"段取りをつける"},{section:6, en:"adjust", ja:"調整する；順応する"},{section:6, en:"confirm", ja:"確認する；裏づける"},{section:6, en:"insight", ja:"見識；洞察力"},{section:6, en:"innovation", ja:"革新；新機軸"},{section:6, en:"budget", ja:"予算；経費"},{section:6, en:"fee", ja:"料金；謝礼"},{section:6, en:"expense", ja:"経費；犠牲"},{section:6, en:"debt", ja:"借金；恩義"},{section:6, en:"loan", ja:"貸付金；貸すこと"},{section:6, en:"duty", ja:"義務；職務；関税"},{section:6, en:"alarm", ja:"不安；警報"},{section:6, en:"emergency", ja:"緊急（事態）"},{section:6, en:"democracy", ja:"民主主義；民主国家"},{section:6, en:"minister", ja:"大臣；聖職者"},{section:6, en:"fellow", ja:"仲間；男"},{section:6, en:"candidate", ja:"候補者；志願者"},{section:6, en:"corporation", ja:"大企業；法人"},{section:6, en:"stereotype", ja:"固定観念"},{section:6, en:"route", ja:"道（筋）；手段"},{section:6, en:"disorder", ja:"障害；混乱"},{section:6, en:"depression", ja:"憂うつ；不況"},{section:6, en:"weapon", ja:"兵器，武器"},{section:6, en:"immigration", ja:"移民；入国管理"},{section:6, en:"barrier", ja:"障壁；防壁"},{section:6, en:"disadvantage", ja:"不利；損失"},{section:6, en:"mood", ja:"気分；雰囲気"},{section:6, en:"motion", ja:"動き；運動；動議"},{section:6, en:"routine", ja:"決まり切った仕事"},{section:6, en:"discipline", ja:"規律；しつけ；訓練"},{section:6, en:"myth", ja:"作り話；神話"},{section:6, en:"hypothesis", ja:"仮説；憶測"},{section:6, en:"physician", ja:"医師；内科医"},{section:6, en:"client", ja:"顧客；依頼人"},{section:6, en:"colony", ja:"植民地；コロニー"},{section:6, en:"statistics", ja:"統計；統計学"},{section:6, en:"grain", ja:"穀物；粒"},{section:6, en:"ingredient", ja:"材料；要因"},{section:6, en:"treasure", ja:"宝物；財産"},{section:6, en:"contract", ja:"契約（書）；協定"},{section:6, en:"welfare", ja:"福祉，幸福"},{section:6, en:"prime", ja:"主要な；極上の"},{section:6, en:"curious", ja:"好奇心の強い；奇妙な"},{section:6, en:"dramatic", ja:"劇的な；演劇の"},{section:6, en:"distinct", ja:"明らかに異なる；明瞭な"},{section:6, en:"anxious", ja:"心配して；切望して"},{section:6, en:"vital", ja:"必要不可欠な；活気ある"},{section:6, en:"conventional", ja:"従来の；月並みな"},{section:6, en:"abstract", ja:"抽象的な"},{section:6, en:"minor", ja:"重要でない；小さい"},{section:6, en:"extraordinary", ja:"並はずれた；異常な"},{section:6, en:"stable", ja:"安定した；動じない"},{section:6, en:"flexible", ja:"融通の利く，柔軟な"},{section:6, en:"brief", ja:"簡潔な；短い"},{section:6, en:"aggressive", ja:"攻撃的な；意欲的な"},{section:6, en:"visible", ja:"（目に）見える；明白な"},{section:6, en:"unexpected", ja:"思いがけない，不意の"},{section:6, en:"ethnic", ja:"民族の；人種の"},{section:6, en:"alien", ja:"異質の；外国の"},{section:6, en:"initial", ja:"初めの"},{section:6, en:"exact", ja:"正確な；まさにその"},{section:6, en:"precise", ja:"正確な；精密な"},{section:6, en:"latter", ja:"後者の"}
+    ];
+
+    let currentWords = [], currentIndex = 0, score = 0, combo = 0;
+    let timerInterval, timeLeft, audioCtx;
+    const TIME_LIMIT = 8;
+    let wrongList = [];
+
+    // --- 音声生成 ---
+    function initAudio() {
+      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    function playSound(isCorrect) {
+      initAudio();
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.connect(gain); gain.connect(audioCtx.destination);
+      if(isCorrect) {
+        osc.type = 'sine'; osc.frequency.setValueAtTime(880, audioCtx.currentTime);
+        osc.frequency.setValueAtTime(1760, audioCtx.currentTime + 0.1);
+      } else {
+        osc.type = 'sawtooth'; osc.frequency.setValueAtTime(140, audioCtx.currentTime);
+      }
+      gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
+      osc.start(); osc.stop(audioCtx.currentTime + 0.3);
+    }
+
+    // セクションメニュー初期化
+    function setupMenu() {
+      const select = document.getElementById('section-select');
+      const sections = [...new Set(vocabData.map(d => d.section))];
+      sections.forEach(s => {
+        const opt = document.createElement('option');
+        opt.value = s; opt.innerText = `Section ${s} (No.${(s-1)*100+1}-${s*100})`;
+        select.appendChild(opt);
+      });
+    }
+    setupMenu();
+
+    document.getElementById('tap-to-start').onclick = function() {
+      this.style.display = 'none';
+      initAudio();
+      document.getElementById('intro').play();
+      setTimeout(() => { if(document.getElementById('setup-area').style.display !== 'none') document.getElementById('menu-bgm').play(); }, 4000);
+    };
+
+    function startGame() {
+      document.getElementById('intro').pause();
+      document.getElementById('menu-bgm').pause();
+      document.getElementById('brawl-start').play();
+      setTimeout(() => { document.getElementById('battle-bgm').play(); }, 1500);
+      
+      const sec = document.getElementById('section-select').value;
+      const filtered = vocabData.filter(w => w.section == sec);
+      currentWords = filtered.sort(() => Math.random() - 0.5).slice(0, 10);
+      
+      score = 0; currentIndex = 0; combo = 0; wrongList = [];
+      document.getElementById('setup-area').style.display = 'none';
+      document.getElementById('game-area').style.display = 'block';
+      nextQuestion();
+    }
+
+    function nextQuestion() {
+      if (currentIndex >= currentWords.length) { showResult(); return; }
+      const word = currentWords[currentIndex];
+      document.getElementById('en-word').innerText = word.en;
+      document.getElementById('question-count').innerText = `Q. ${currentIndex + 1} / ${currentWords.length}`;
+      document.getElementById('combo-display').innerText = `🔥 ${combo} COMBO`;
+
+      let wrongs = vocabData.filter(w => w.ja !== word.ja).sort(() => Math.random() - 0.5).slice(0, 3);
+      let choices = [word, ...wrongs].sort(() => Math.random() - 0.5);
+      
+      const area = document.getElementById('options-area');
+      area.innerHTML = '';
+      choices.forEach(c => {
+        const btn = document.createElement('button');
+        btn.className = 'btn-option'; btn.innerText = c.ja;
+        btn.onclick = () => checkAnswer(c.ja, word.ja);
+        area.appendChild(btn);
+      });
+      startTimer();
+    }
+
+    function startTimer() {
+      clearInterval(timerInterval);
+      timeLeft = TIME_LIMIT;
+      const bar = document.getElementById('timer-bar');
+      timerInterval = setInterval(() => {
+        timeLeft -= 0.05;
+        bar.style.width = (timeLeft / TIME_LIMIT * 100) + '%';
+        if (timeLeft <= 0) { checkAnswer(null, currentWords[currentIndex].ja); }
+      }, 50);
+    }
+
+    function checkAnswer(selected, correct) {
+      clearInterval(timerInterval);
+      const flash = document.getElementById('flash');
+      if (selected === correct) {
+        score++; combo++; playSound(true);
+        flash.style.animation = 'none'; flash.offsetHeight; flash.style.animation = 'flashCorrect 0.4s';
+      } else {
+        combo = 0; wrongList.push(currentWords[currentIndex]); playSound(false);
+        flash.style.animation = 'none'; flash.offsetHeight; flash.style.animation = 'flashWrong 0.4s';
+      }
+      currentIndex++;
+      setTimeout(nextQuestion, 500);
+    }
+
+    function showResult() {
+      document.getElementById('game-area').style.display = 'none';
+      document.getElementById('result-area').style.display = 'block';
+      document.getElementById('battle-bgm').pause();
+      
+      const percent = (score / currentWords.length) * 100;
+      document.getElementById('final-score').innerText = `${score} / ${currentWords.length}`;
+      
+      let audioFile = "ScreenRecording_05-03-2026 19-55-13_1.mov";
+      if(percent >= 80) audioFile = "ScreenRecording_05-03-2026 18-55-03_1_2.mov";
+      new Audio(audioFile).play();
+
+      const listArea = document.getElementById('wrong-list-display');
+      if (wrongList.length > 0) {
+        listArea.innerHTML = "<strong>復習リスト:</strong><br>" + 
+          wrongList.map(w => `<span style="color:#ffeb3b">${w.en}</span> : ${w.ja}`).join('<br>');
+      } else {
+        listArea.innerHTML = "Perfect! この調子で全1900語を目指そう！";
+      }
+    }
+  </script>
+</body>
+</html>
